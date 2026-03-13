@@ -1,0 +1,52 @@
+[
+  {
+    "symbol": "AAPL",
+    "company_name": "Apple",
+    "sector": "Technology"
+  },
+  {
+    "symbol": "TSLA",
+    "company_name": "Tesla",
+    "sector": "Automotive"
+  },
+  {
+    "symbol": "MSFT",
+    "company_name": "Microsoft",
+    "sector": "Technology"
+  },
+  {
+    "symbol": "AMZN",
+    "company_name": "Amazon",
+    "sector": "E-Commerce"
+  },
+  {
+    "symbol": "GOOGL",
+    "company_name": "Alphabet",
+    "sector": "Technology"
+  },
+  {
+    "symbol": "NVDA",
+    "company_name": "Nvidia",
+    "sector": "Semiconductors"
+  },
+  {
+    "symbol": "META",
+    "company_name": "Meta",
+    "sector": "Social Media"
+  },
+  {
+    "symbol": "NFLX",
+    "company_name": "Netflix",
+    "sector": "Entertainment"
+  },
+  {
+    "symbol": "BABA",
+    "company_name": "Alibaba",
+    "sector": "E-Commerce"
+  },
+  {
+    "symbol": "UBER",
+    "company_name": "Uber",
+    "sector": "Transportation"
+  }
+]
