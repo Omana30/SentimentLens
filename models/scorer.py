@@ -1,143 +1,113 @@
 """
-models/scorer.py
+scorer.py — Lightweight financial sentiment scorer using VADER + lexicon enhancement.
 
-FinBERT-based sentiment scorer for financial text.
+Uses VADER sentiment analysis optimised for financial text — no heavy ML dependencies,
+runs on free hosting. FinBERT can be swapped in for local/production use.
 
-Loads ProsusAI/finbert once on initialisation and exposes methods for
-single-text scoring, batch scoring, and aggregate signal calculation.
-All methods handle exceptions gracefully and never propagate crashes to callers.
+Part of SentimentLens by Omana Prabhakar (github.com/Omana30)
 """
 
-from __future__ import annotations
-
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+from typing import Optional
 import logging
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class SentimentScorer:
     """
-    Wraps the ProsusAI/finbert HuggingFace pipeline for financial sentiment
-    classification.
+    Financial sentiment scorer using VADER with financial domain tuning.
 
-    The model is loaded once at init and cached as an instance variable to
-    avoid repeated disk I/O across multiple calls.
-
-    Sentiment labels returned by FinBERT are:
-        - "positive"  →  Bullish signal
-        - "negative"  →  Bearish signal
-        - "neutral"   →  No clear directional signal
+    Designed to run on free hosting tiers without heavy ML dependencies.
+    For higher accuracy, swap the _score_with_vader method with FinBERT
+    when running locally with sufficient RAM.
     """
 
-    # Maximum characters passed to FinBERT (tokeniser limit is ~512 tokens;
-    # 512 chars is a safe proxy that avoids truncation errors).
-    MAX_TEXT_LENGTH: int = 512
+    def __init__(self):
+        """Initialise VADER analyser. Loads once and caches as instance variable."""
+        self.analyser = SentimentIntensityAnalyzer()
+        self._add_financial_terms()
+        logger.info("SentimentScorer initialised with VADER + financial lexicon")
 
-    def __init__(self) -> None:
-        """
-        Initialise the SentimentScorer by loading ProsusAI/finbert.
-
-        On first run the model (~500 MB) is downloaded from HuggingFace Hub
-        and cached in the default HuggingFace cache directory.  Subsequent
-        runs load from the local cache.
-        """
-        self._pipeline: Any = None
-        self._load_pipeline()
-
-    def _load_pipeline(self) -> None:
-        """Load the FinBERT text-classification pipeline."""
-        try:
-            from transformers import pipeline  # type: ignore
-
-            self._pipeline = pipeline(
-                "text-classification",
-                model="ProsusAI/finbert",
-            )
-            logger.info("FinBERT pipeline loaded successfully.")
-        except Exception as exc:  # noqa: BLE001
-            logger.error("Failed to load FinBERT pipeline: %s", exc)
-            self._pipeline = None
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+    def _add_financial_terms(self):
+        """Add financial domain terms to VADER lexicon for better accuracy."""
+        financial_additions = {
+            "bullish": 2.0, "bearish": -2.0,
+            "outperform": 1.5, "underperform": -1.5,
+            "beat": 1.3, "miss": -1.3,
+            "surge": 2.0, "plunge": -2.0,
+            "rally": 1.8, "crash": -2.5,
+            "upgrade": 1.5, "downgrade": -1.5,
+            "record": 1.2, "bankruptcy": -3.0,
+            "fraud": -2.8, "lawsuit": -1.8,
+            "dividend": 1.2, "buyback": 1.3,
+            "acquisition": 1.0, "layoffs": -1.5,
+        }
+        self.analyser.lexicon.update(financial_additions)
 
     def score_text(self, text: str) -> dict:
         """
-        Score a single piece of financial text with FinBERT.
+        Score a single text string for financial sentiment.
 
         Args:
-            text: Raw financial text (headline, description, article body).
+            text: Text to analyse. Truncated to 512 chars.
 
         Returns:
-            dict with keys:
-                - sentiment (str): "positive" | "negative" | "neutral"
-                - confidence (float): model confidence in [0.0, 1.0]
-                - raw_label (str): label string as returned by the pipeline
+            dict with keys: sentiment (str), confidence (float), raw_label (str)
         """
-        if not text or not isinstance(text, str):
-            return self._neutral_score()
-
-        # Truncate to avoid tokeniser overflow
-        truncated = text[: self.MAX_TEXT_LENGTH]
-
         try:
-            if self._pipeline is None:
-                raise RuntimeError("Pipeline not loaded")
+            truncated = text[:512] if len(text) > 512 else text
+            scores = self.analyser.polarity_scores(truncated)
+            compound = scores["compound"]
 
-            results = self._pipeline(truncated)
-            # Pipeline returns a list; we always pass one text so take [0]
-            result = results[0]
-            raw_label: str = result.get("label", "neutral")
-            confidence: float = float(result.get("score", 0.5))
-
-            # FinBERT labels are already lowercase "positive"/"negative"/"neutral"
-            sentiment = raw_label.lower()
-            if sentiment not in {"positive", "negative", "neutral"}:
+            if compound >= 0.05:
+                sentiment = "positive"
+                confidence = min(0.5 + compound * 0.5, 1.0)
+            elif compound <= -0.05:
+                sentiment = "negative"
+                confidence = min(0.5 + abs(compound) * 0.5, 1.0)
+            else:
                 sentiment = "neutral"
+                confidence = 1.0 - abs(compound) * 2
 
             return {
                 "sentiment": sentiment,
-                "confidence": round(confidence, 4),
-                "raw_label": raw_label,
+                "confidence": round(confidence, 3),
+                "raw_label": f"VADER:{sentiment.upper()}",
+                "compound_score": round(compound, 3)
             }
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("score_text failed for text '%s...': %s", text[:50], exc)
-            return self._neutral_score()
+
+        except Exception as e:
+            logger.warning(f"Scoring failed: {e}. Returning neutral.")
+            return {
+                "sentiment": "neutral",
+                "confidence": 0.5,
+                "raw_label": "FALLBACK:NEUTRAL",
+                "compound_score": 0.0
+            }
 
     def score_batch(self, texts: list[str]) -> list[dict]:
         """
-        Score a list of financial texts.
+        Score a list of texts.
 
         Args:
-            texts: List of text strings to score.
+            texts: List of strings to score.
 
         Returns:
-            List of score dicts (same structure as score_text).
-            Failed items are replaced with a neutral score rather than
-            raising an exception.
+            List of score dicts matching order of input texts.
         """
-        return [self.score_text(t) for t in texts]
+        return [self.score_text(text) for text in texts]
 
     def aggregate_scores(self, scores: list[dict]) -> dict:
         """
-        Aggregate a list of per-article scores into an overall market signal.
-
-        Calculates percentage breakdowns across positive / negative / neutral
-        articles and maps the dominant sentiment to a directional signal.
+        Aggregate multiple article scores into an overall market signal.
 
         Args:
-            scores: List of score dicts as returned by score_text / score_batch.
+            scores: List of score dicts from score_text or score_batch.
 
         Returns:
-            dict with keys:
-                - signal (str): "Bullish" | "Bearish" | "Neutral"
-                - confidence (float): mean confidence across all articles
-                - positive_pct (float): fraction of positive articles [0-1]
-                - negative_pct (float): fraction of negative articles [0-1]
-                - neutral_pct (float):  fraction of neutral articles [0-1]
-                - article_count (int):  total number of articles scored
+            dict with: signal, confidence, positive_pct, negative_pct,
+                      neutral_pct, article_count
         """
         if not scores:
             return {
@@ -146,49 +116,34 @@ class SentimentScorer:
                 "positive_pct": 0.0,
                 "negative_pct": 0.0,
                 "neutral_pct": 0.0,
-                "article_count": 0,
+                "article_count": 0
             }
 
         total = len(scores)
-        positive_count = sum(1 for s in scores if s.get("sentiment") == "positive")
-        negative_count = sum(1 for s in scores if s.get("sentiment") == "negative")
-        neutral_count = total - positive_count - negative_count
+        positive = sum(1 for s in scores if s["sentiment"] == "positive")
+        negative = sum(1 for s in scores if s["sentiment"] == "negative")
+        neutral = total - positive - negative
 
-        positive_pct = round(positive_count / total, 4)
-        negative_pct = round(negative_count / total, 4)
-        neutral_pct = round(neutral_count / total, 4)
+        positive_pct = round(positive / total * 100, 1)
+        negative_pct = round(negative / total * 100, 1)
+        neutral_pct = round(neutral / total * 100, 1)
 
-        # Average confidence across all articles
-        mean_confidence = round(
-            sum(s.get("confidence", 0.5) for s in scores) / total, 4
+        avg_confidence = round(
+            sum(s["confidence"] for s in scores) / total, 3
         )
 
-        # Determine overall signal from majority class
-        if positive_count > negative_count and positive_count > neutral_count:
+        if positive_pct > 50:
             signal = "Bullish"
-        elif negative_count > positive_count and negative_count > neutral_count:
+        elif negative_pct > 50:
             signal = "Bearish"
         else:
             signal = "Neutral"
 
         return {
             "signal": signal,
-            "confidence": mean_confidence,
+            "confidence": avg_confidence,
             "positive_pct": positive_pct,
             "negative_pct": negative_pct,
             "neutral_pct": neutral_pct,
-            "article_count": total,
-        }
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _neutral_score() -> dict:
-        """Return a safe neutral fallback score."""
-        return {
-            "sentiment": "neutral",
-            "confidence": 0.5,
-            "raw_label": "neutral",
+            "article_count": total
         }
