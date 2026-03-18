@@ -13,7 +13,7 @@ SentimentLens analyses live financial news using state-of-the-art NLP to surface
 
 ## Built on Research
 
-This project extends MSc thesis research on NLP-driven stock market sentiment prediction conducted at Heriot-Watt University, Edinburgh. The financial lexicon enhancement technique implemented in `models/lexicon.py` directly applies methodology developed during that research. The hybrid approach — combining transformer-based FinBERT classification with domain-specific lexicon scoring — improves sentiment signal precision for financial texts compared to either method alone.
+This project extends MSc thesis research on NLP-driven stock market sentiment prediction conducted at Heriot-Watt University, Edinburgh. The financial lexicon enhancement technique implemented in `models/lexicon.py` directly applies methodology developed during that research. The hybrid approach, combining transformer based FinBERT classification with domain-specific lexicon scoring, improves sentiment signal precision for financial texts compared to either method alone.
 
 ---
 
@@ -59,7 +59,7 @@ This project extends MSc thesis research on NLP-driven stock market sentiment pr
 
 ## Features
 
-- **Real-time sentiment analysis** using FinBERT (ProsusAI/finbert) running locally — no inference costs
+- **Real-time sentiment analysis** using FinBERT (ProsusAI/finbert) running locally, no inference costs
 - **Hybrid scoring** combining FinBERT predictions with a curated 50+ term financial lexicon
 - **7-day sentiment trend charts** showing sentiment trajectory per ticker
 - **Live stock price overlays** via yfinance (free, no API key)
@@ -125,7 +125,7 @@ On first run, FinBERT (~500MB) will be downloaded from HuggingFace Hub and cache
 pytest tests/ -v
 ```
 
-Tests use mocked external dependencies — no real API calls, no model loading.
+Tests use mocked external dependencies no real API calls, no model loading.
 
 ---
 
@@ -160,7 +160,7 @@ SentimentLens/
 
 ## License
 
-MIT License — see LICENSE for details.
+MIT License | see LICENSE for details.
 
 ---
 
